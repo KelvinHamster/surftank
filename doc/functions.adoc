@@ -1,0 +1,239 @@
+Functions
+=========
+Kentaro Hanson
+:stem:
+
+This page outlines the functions used by the simulator that are outside of the `bem_sim` class definition.
+
+
+[#bem_integrate]
+== bem_integrate.m
+[source,matlab]
+----
+result = bem_integrate(obj,value,mode);
+----
+
+Calculates an integral around the boundary of the provided values. `value` is an array of floats that represents the value at each node.
+
+.bem_integrate arguments
+|===
+|Argument |Type |Description
+|obj
+|`bem_sim` class
+|Simulator to calculate the integral of
+
+|value
+|length-link:bem_sim.html#boundary_N[`N`] float array
+|The value that should be integrated at each node.
+
+|mode
+|integer
+|Specifies the type of integral to be calculated. Specifics are below
+
+|xl
+|float (only needed if mode is 3 or 4)
+|X-location of the singularity.
+
+|zl
+|float (only needed if mode is 3 or 4)
+|Z-location of the singularity.
+|===
+
+`value` is interpolated using the shape functions link:bem_method.html#uq_interpolation[specified in the BEM method].
+`mode` should take one of the following values:
+
+- (0) - Integral is calculated stem:[d\Gamma], that is,
+[stem]
+====
+\[\int_{\Gamma} v(\vec x) ~ d\Gamma = \int_{\Gamma} v(\Gamma(t)) ~ |\Gamma'(t)| ~ dt\]
+====
+- (1) - Integral is calculated stem:[dx], that is,
+[stem]
+====
+\[\int_{\Gamma} v(\vec x) ~ dx = \int_{\Gamma} v(\Gamma(t)) ~ \left(\Gamma'(t)\cdot \hat x\right) ~ dt\]
+====
+- (2) - Integral is calculated stem:[dz], that is,
+[stem]
+====
+\[\int_{\Gamma} v(\vec x) ~ dz = \int_{\Gamma} v(\Gamma(t)) ~ \left(\Gamma'(t)\cdot \hat z\right) ~ dt\]
+====
+- (3) - Integral is calculated stem:[G(\vec x,\vec x_l)~d\Gamma] (see link:bem_method.html#bie_numerical[BEM method]), where stem:[\vec x_l = (x_l,z_l)]. That is,
+[stem]
+====
+\[\int_{\Gamma} v(\vec x) ~ G(\vec x,\vec x_l) ~ d\Gamma = \int_{\Gamma} v(\Gamma(t)) ~ G(\Gamma(t),\vec x_l) ~ |\Gamma'(t)| ~ dt\]
+====
+- (4) - Integral is calculated stem:[G_n(\vec x,\vec x_l)~d\Gamma] (see link:bem_method.html#bie_numerical[BEM method]), where stem:[\vec x_l = (x_l,z_l)]. That is,
+[stem]
+====
+\[\int_{\Gamma} v(\vec x) ~ G_n(\vec x,\vec x_l) ~ d\Gamma = \int_{\Gamma} v(\Gamma(t)) ~ G_n(\Gamma(t),\vec x_l) ~ |\Gamma'(t)| ~ dt\]
+====
+
+Because the integral is calculated on the full boundary, `value` can be set to 0 on non-free-surface nodes if the integral should only be evaluated on the free surface. This will produce a correct solution if the ends of the free surface are link:bem_method.html#doublenode[double-noded].
+
+[#calc_energy]
+== calc_energy.m
+[source,matlab]
+----
+[E,KE,PE] = calc_mean_water_level(obj)
+----
+Calculates the specific kinetic, potential, and total energies of the simulation at the current time step. This is related to the link:bem_method.html#acc_energy[accuracy check].
+
+[#calc_mean_water_level]
+== calc_mean_water_level.m
+[source,matlab]
+----
+zbar = calc_mean_water_level(obj)
+----
+Calculates the mean water level of the simulation at the current time step. This is related to the link:bem_method.html#acc_mean_water_level[accuracy check].
+
+[#calc_total_flux]
+== calc_total_flux.m
+[source,matlab]
+----
+flux = calc_total_flux(obj)
+----
+Calculates the flux through the boundary at the current time step. This is related to the link:bem_method.html#acc_total_flux[accuracy check].
+
+[#calc_volume]
+== calc_volume.m
+[source,matlab]
+----
+flux = calc_volume(obj)
+----
+Calculates the volume of the area inside the boundary at the current time step. This is related to the link:bem_method.html#acc_volume_error[accuracy check].
+
+[#eval_Kn_Kd]
+== eval_Kn_Kd.m
+[source,matlab]
+----
+obj = eval_Kn_Kd(obj);
+----
+
+Modifies the link:bem_sim.html#characteristics_[+characteristics_+] property of the given simulator class, evaluating integrals of the boundary.
+
+.eval_Kn_Kd arguments
+|===
+|Argument |Type |Description
+|obj
+|`bem_sim` class
+|Simulator to update the characteristics of
+|===
+
+In terms of integral solving, `eval_Kn_Kd` sets the `K_n`, `K_d`, and `COEFS_n` values in `characteristics_`.
+
+`K_n(l,j)` is the value stem:[K_{n_{l,j}}], defined link:bem_method.html#value_Kn[here]. `K_d(l,j)` is the value stem:[K_{d_{l,j}}], defined link:bem_method.html#value_Kd[here]. `COEFS_n` is the value stem:[K_{n_{l,j}} + \delta_{l,j}\alpha(\vec x_l)], which is explained in the link:bem_method.html#system_of_equations[algebraic system of equations].
+
+More values are set, however, specifically:
+
+- `cosbeta` and `sinbeta`, which represent the slope of the boundary at that node, where stem:[\beta] is the angle from the vector pointing in the positive x direction, moving counter clockwise.
+
+- `mat_A` and `mat_b`, which represent the link:bem_method.html#system_of_equations[algebraic system of equations] to evaluate unknown quantities on the boundary.
+
+- `u` and `q` are the quantities of stem:[\phi] and stem:[\phi_n] on the boundary, indexed by node. This represents the solution derived from the system
+stem:[Ax = b] with values from `mat_A` and `mat_b`.
+
+- `umax` and `dxmin` are the values used in the courant number calculation.
+
+- various derivatives of stem:[\phi] along the surface
+
+
+[#get_interpolation_struct]
+== get_interpolation_struct.m
+[source,matlab]
+----
+interp = get_interpolation_struct(M,x0,xm);
+----
+
+Returns a structure as in bem_sim interpolation parameters given the order and bounds, which is in the form for the link:bem_sim.html#interpolation[bem_sim interpolation structs]. Specifically, the returned struct has
+
+- `M` - order of the interpolation (equal to the value of `M` passed in)
+
+- `Lagrange` - matrix of Lagrange polynomial coefficients based on `M+1` points equally spaced between `x0` and `xm`. There are `M+1` polynomials that each evaluate to one at their corresponding point and zero at the other points.
+[stem]
+++++
+\[L_j(x)  = \sum_{k=0}^M \verb+Lagrange+(j+1,k+1)~x^k\]
+++++
+
+- `Lagrange_prime` - matrix of the derivatives of Lagrange polynomials
+[stem]
+++++
+    \[L_j'(x) = \sum_{k=0}^{M-1} \verb+Lagrange_prime+(j+1,k+1)~x^k\]
+++++
+
+- `Lagrange_primeprime` - matrix of the 2nd derivatives of Lagrange polynomials
+[stem]
+++++
+    \[ L_j''(x)= \sum_{k=0}^{M-2} \verb+Lagrange_primeprime+(j+1,k+1)~x^k \]
+++++
+
+
+.get_interpolation_struct arguments
+|===
+|Argument |Type |Description
+|M
+|positive integer
+|order of the interpolation (degree of the Lagrange polynomials)
+
+|x0
+|float, less than `xm`
+|the position of the first node
+
+|xm
+|float, greater than `x0`
+|the position of the last node
+|===
+
+[#sim_from_data]
+== sim_from_data.m
+[source,matlab]
+----
+obj = sim_from_data(x,z,doublenode,phi_FS,FS_start,FS_end);
+----
+
+Generates a `bem_sim` object from the given boundary values.
+
+
+.sim_from_data arguments
+|===
+|Argument |Type |Description
+|x
+|float array
+|array of `x` values for the nodes
+
+|z
+|float array
+|array of `z` values for the nodes
+
+|phi_FS
+|float array
+|array of `phi` values for the nodes along the free surface
+
+|FS_start
+|positive integer
+|index of the first free surface node
+
+|FS_end
+|positive integer
+|index of the last free surface node
+|===
+
+Additionally, keyword arguments can be passed through `varargin`, which are passed into the constructor of the `bem_sim` object.
+
+[#step_sim]
+== step_sim.m
+[source,matlab]
+----
+obj = step_sim(obj);
+----
+
+Performs one time step on the given simulator class. This is called by the link:bem_sim.html#method_step[+bem_sim.step()+] method.
+
+Derivatives are calculated from the link:bem_method.html#timestepping[boundary condition], using an integration scheme specified link:bem_sim.html#stepping_timestep_method[in the +bem_sim+ object].
+
+.step_sim arguments
+|===
+|Argument |Type |Description
+|obj
+|`bem_sim` class
+|Simulator to step
+|===

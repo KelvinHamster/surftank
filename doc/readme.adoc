@@ -1,0 +1,11 @@
+= Simple Domain Irrotational Model
+Kentaro Hanson
+:stem:
+
+This is a Matlab implementation of the Boundary Element Method (BEM) for modeling irrotational fluid flows on a two dimensional simple domain in the context of surface gravity waves. The boundary is restricted to a union of an unmoving Neumann boundary (walls and floor of a tank or basin) and a contiguous free surface (water surface), in the formulation of Grilli et. al.
+
+This model was created for the purpose of modeling shoaling waves, however it is general enough to handle different simulations, such as a standing wave in a tank.
+
+== Running the model
+
+There are 3 simulations already set up in the `examples` directory.

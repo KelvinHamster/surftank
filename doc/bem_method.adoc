@@ -1,0 +1,235 @@
+The Boundary Element Method
+===========================
+Kentaro Hanson
+:stem:
+
+TODO
+
+[#timestepping]
+=== Time-Stepping the free surface
+Because the simulation is Lagrangian, we must use material derivatives
+[stem]
+====
+\[
+\frac{D u}{D t} = \frac{\partial u}{\partial t} + \nabla \phi \cdot \nabla u
+\]
+====
+for various quantities. These derivatives come from the boundary conditions on the free surface.
+[stem]
+====
+\[
+\frac{D \vec x}{D t} = \nabla \phi
+\]
+\[
+\frac{D \phi}{D t} = \frac{1}{2}|\nabla \phi|^2 - gz - \frac{P_a}{\rho}
+\]
+====
+Thus, finding stem:[\nabla \phi] on the free surface allows us to time-step the simulation using some differential equation integration scheme. Because stem:[\phi] is known on the free surface, we know its derivative along the free surface. Thus, it suffices to find the derivative perpendicular to the free surface, which can be found using a Boundary Element Method approach.
+
+Alternatively higher order derivatives can be derived from the boundary conditions in order to use a higher order Taylor series method, derived in Otta, Svendsen, and Grilli (1992) ^<<OSG>>^. It should be noted that those derivations assume a negative-oriented boundary, so a few signs must be flipped for this implementation.
+
+[#bie_numerical]
+=== Numerical formulation of the BIE
+For some scalar function stem:[u] and normal-directional derivative stem:[q = \frac{\partial u}{\partial n}], the boundary integral equation is
+
+[stem]
+====
+\[
+\alpha(\vec x_l)u(\vec x_l) = \int_{\Gamma} q(\vec x)G(\vec x,\vec x_l) - u(\vec x)G_n(\vec x, \vec x_l) ~ d\Gamma
+\]
+====
+where stem:[\Gamma] is the boundary, stem:[G(\vec x, \vec x_l)] is the Green function with singularity stem:[\vec x_l], stem:[G_n(\vec x, \vec x_l) = \frac{\partial G}{\partial n}(\vec x, \vec x_l)], and stem:[\alpha] is a geometric quantity.
+
+In two dimensions,
+stem:[G(\vec x, \vec x_l) = -\frac{1}{2\pi}\ln|\vec x-\vec x_l|], and
+stem:[G_n(\vec x, \vec x_l) = -\frac{1}{2\pi}\frac{(\vec x - \vec x_l)\cdot n}{|\vec x-\vec x_l|^2}].
+
+The numerical problem involves the following quantities:
+
+- stem:[\vec x_j], the location of each node stem:[1 \le j \le N] that discretizes the boundary.
+- stem:[u_j], the value of stem:[u] at each node stem:[1 \le j \le N].
+- stem:[q_j], the value of stem:[q] at each node stem:[1 \le j \le N].
+
+[#uq_interpolation]
+We separate stem:[\Gamma] into elements. On the free surface, we use spline interpolation to determine the geometry and the quantities stem:[u_j,q_j] are interpolated using linear shape functions. Outside of the free surface isoparametric elements are used. For the sake of notation, we write the interpolating functions on the entire boundary,
+where the values at each part of the boundary is defined by such interpolation schemes:
+[stem]
+====
+\[
+u(\vec x) = \sum_{j=1}^N u_jN_j(\vec x), ~ ~ ~ ~ q(\vec x) = \sum_{j=1}^N q_jN_j(\vec x), ~ ~ ~ ~ \vec x \in \Gamma
+\]
+====
+
+This allows us to use linearity to write the BIE in the following form,
+[stem]
+====
+\[
+\alpha(\vec x_l)u(\vec x_l) = \sum_{j=1}^N q_j\int_{\Gamma} N_j(\vec x)G(\vec x,\vec x_l) ~ d\Gamma -  \sum_{j=1}^N u_j \int_{\Gamma} N_j(\vec x)G_n(\vec x, \vec x_l) ~ d\Gamma
+\]
+====
+which is a linear equation of the stem:[u_j,q_j]. We do this for every node stem:[1 \le l \le N], so that we have stem:[N] equations, which form the backbone of the <<system_of_equations,system of equations>> to solve for any unknown boundary quantities.
+
+The coefficients are evaluated below.
+
+[#value_Kd]
+==== stem:[K_{d_{l,j}}]
+
+The value stem:[K_{d_{l,j}}] is the integral
+
+[stem]
+====
+\[
+K_{d_{l,j}} = \int_{\Gamma} N_j(\vec x)G(\vec x,\vec x_l) ~ d\Gamma
+\]
+====
+
+The shape functions are 0 for elements that do not contain node stem:[j], so the intergral involves at most two segments (when node stem:[j] is an endpoint between two elements).
+
+If the singularity stem:[\vec x_l] is at a nonzero-shaped segment, then we use a technique to increase the accuracy of the quadrature, detailed in Otta, Svendsen, and Grilli (1992) ^<<OSG>>^. Otherwise, we can use standard Gauss-Legendre quadrature.
+
+Let stem:[r(t)] be the parameterization of a segment stem:[\gamma] with a singularity, with stem:[0 \le t \le 1]. If stem:[r(t_l) = x_l], then we can rewrite the integral as
+[stem]
+====
+\[
+\int_0^1 N_j(r(t))G(r(t),r(t_l)) ~ d\Gamma
+= -\frac{1}{2\pi}\int_0^1 N_j(r(t))\left(\ln\frac{|r(t)-r(t_l)|}{|t-t_l|} + \ln|t - t_l|\right) ~ d\Gamma
+\]
+\[
+= -\frac{1}{2\pi}\left[\int_0^1 N_j(r(t))\ln\frac{|r(t)-r(t_l)|}{|t-t_l|} + \int_0^1 N_j(r(t))\ln|t - t_l| ~ d\Gamma\right]
+\]
+====
+where the first integral has no singularity because stem:[r] is differentiable and the second is solved using a special Gaussian quadrature in Anderson (1964)^<<specialquad>>^.
+
+
+[#value_Kn]
+==== stem:[K_{n_{l,j}}]
+
+The value stem:[K_{n_{l,j}}] is the integral
+
+[stem]
+====
+\[
+K_{n_{l,j}} = \int_{\Gamma} N_j(\vec x)G_n(\vec x,\vec x_l) ~ d\Gamma
+\]
+====
+
+Similar to the stem:[K_{d_{l,j}}], if the singularity stem:[\vec x_l] is at a nonzero-shaped segment, then we use a technique to increase the accuracy of the quadrature, detailed in Otta, Svendsen, and Grilli (1992) ^<<OSG>>^. Otherwise, we can use standard Gauss-Legendre quadrature.
+
+As before, let stem:[r(t) = (x(t),z(t))] be the parameterization of a segment stem:[\gamma] with a singularity, with stem:[0 \le t \le 1], and set stem:[r(t_l) = x_l].
+Noticing stem:[\nabla \tan^{-1}(y/x) = -\nabla \tan^{-1}(x/y) = \frac{(-y,x)}{x^2+y^2}] so that
+[stem]
+====
+\[
+\frac{\partial}{\partial t} \tan^{-1}\left(\frac{z(t) - z(t_l)}{x(t) - x(t_l)}\right) = 
+\frac{\partial}{\partial t} -\tan^{-1}\left(\frac{x(t) - x(t_l)}{z(t) - z(t_l)}\right)\]
+
+\[ = \frac{(z(t_l)-z(t), x(t) - x(t_l))}{|r(t) - r(t_l)|^2} \cdot \frac{d r}{d t}
+= \frac{ \frac{dz}{dt}(x(t) - x(t_l)) ~ - ~ \frac{dx}{dt}(z(t)-z(t_l))}{|r(t) - r(t_l)|^2}
+\]
+====
+
+Because stem:[d\Gamma = |r'(t)|dt], we notice stem:[G_n(\vec x,\vec x_l) ~ d\Gamma] evaluates to the same quantity (with a factor of stem:[-1/{2\pi}]), so the integral is equivalent to
+
+[stem]
+====
+\[-
+\frac{1}{2\pi}\int_{0}^1 N_j(r(t))\frac{dv}{dt} ~ dt, ~ ~ ~ ~ v = \tan^{-1}\left(\frac{z(t) - z(t_l)}{x(t) - x(t_l)}\right) \text{ or } v=-\tan^{-1}\left(\frac{x(t) - x(t_l)}{z(t) - z(t_l)}\right)
+\]
+====
+
+After integration by parts, the integral becomes
+[stem]
+====
+\[
+-\frac{1}{2\pi}\int_{0}^1 N_j(r(t))\frac{dv}{dt} ~ dt = -\frac{1}{2\pi}\left[N_j(r(1)v(1) - N_j(r(0))v(0) - \int_{0}^1 v(t)N_j(r(t)) ~ dt\right]
+\]
+====
+which has no singularities. For stem:[t \approx t_l], we can use L'Hospital's rule on the fraction in stem:[v].
+
+[#system_of_equations]
+=== The Resultant System of Equations
+
+From above, we developed the system and solved for the coefficients of
+
+[stem]
+====
+\[
+\alpha(\vec x_l)u_l = \sum_{j=1}^N q_j K_{d_{l,j}} -  \sum_{j=1}^N u_j K_{n_{l,j}}, ~ ~ ~ 1 \le l \le N
+\]
+====
+Moving the LHS to the RHS, we can combine the like term, which can be written as
+[stem]
+====
+\[
+0 = \sum_{j=1}^N q_j K_{d_{l,j}} -  \sum_{j=1}^N u_j (K_{n_{l,j}} + \alpha(\vec x_l)\delta_{j,l}), ~ ~ ~ 1 \le l \le N
+\]
+====
+where stem:[\delta_{j,l}] denotes the Kronecker delta. Those coefficients can be solved algebraically instead of geometrically by considering the function stem:[u = 1], which as a constant function, implies stem:[q = 0].
+
+To solve the system, we must have stem:[N] values given, which in a traditional BEM, is determined by choosing stem:[u_j] or stem:[q_j] for each stem:[j]. In the free surface simulation, stem:[u_j = \phi(x_j)] is specified for free surface nodes, and stem:[q_j =\frac{\partial \phi}{\partial n} = 0] is specified on the boundary in order to simulate a basin or wave tank. If we are calculating higher order derivative terms for <<timestepping,time stepping>>, like in Grilli Skourup and Svendsen (1989) ^<<GSS>>^, we can additionally solve for the system with stem:[u_j = \frac{\partial\phi}{\partial t}(x_j)] for free surface nodes, and stem:[q_j = \frac{\partial^2 \phi}{\partial t \partial n} = 0] on the boundary.
+
+[#doublenode]
+==== Double nodes
+
+We must support sharp corners in the boundary, for example, when the free surface meets a wall. In doing so, the first derivative of the boundary parameterization is discontinuous, and stem:[\phi_n] may be multi-valued. To solve this, we have two elements at the same position, stem:[\vec x_j = \vec x_{j+1}] and an empty element between them. Because this element covers no distance, the integration step can safely ignore it, and the shape functions stem:[N_j, N_{j+1}] have discontinuities at stem:[\vec x_j]. Because stem:[\phi] is continuous, we can safely add a constraint that stem:[u_j = u_{j+1}], which can replace one of the equations of the linear system. Because stem:[q_j] and stem:[q_{j+1}] are not necessarily equal, the <<uq_interpolation,interpolating function stem:[q]>> is allowed to have a discontinuity at stem:[\vec x_j]. While the stem:[q(x)] formulation is multivalued at stem:[\vec x_j], the parameterization across the elements are not, due to the double node. Otta, Svendsen and Grilli (1992)^<<OSG>>^ go into more detail.
+
+[#accuracychecks]
+=== Accuracy Checks
+
+This section is based on Grilli Skourup and Svendsen (1989) ^<<GSS>>^, which provides metrics in which to evaluate the accuracy of the simulation.
+
+[#acc_total_flux]
+===== Continuity error
+This validates the correctness of the Laplace solution, that is,
+[stem]
+====
+\[\int_{\Gamma} \phi_n ~ d\Gamma\]
+====
+should be zero. This is calculated in link:functions.html#calc_total_flux[`calc_total_flux()`].
+
+[#acc_condition_number]
+===== Condition Number
+This validates the <<system_of_equations,system of equations>>
+and is simply the condtion number of the matrix stem:[A].
+
+
+[#acc_volume_error]
+===== Volume error
+This validates the model against conservation of mass, using volume.
+[stem]
+====
+\[V = \int_{\Gamma} z ~ dx\]
+====
+which is compared to the initial volume. The difference should be zero. stem:[V] is calculated in link:functions.html#calc_volume[`calc_volume()`].
+
+[#acc_mean_water_level]
+===== Level error
+The mean water level is another way to validate the volume, but using a value calculated only on the free surface. This is 
+[stem]
+====
+\[\frac{1}{L}\int_{\Gamma_{FS}} z ~ dx\]
+====
+which may have a know theoretical value for a given simulation. This is calculated in link:functions.html#calc_mean_water_level[`calc_mean_water_level()`].
+
+[#acc_energy]
+===== Energy error
+This validates the model against conservation of energy. Specific energy is calculated below, as
+[stem]
+====
+\[KE = \frac{\rho}{2aL}\int_{\Gamma} \phi\phi_n ~ d\Gamma\]
+\[PE = \frac{\rho g}{2aL}\int_{\Gamma_{FS}} z^2 ~ dx\]
+\[E = KE + PE\]
+====
+which is compared to the initial energy. The difference should be zero. stem:[E,KE,PE] are all calculated in link:functions.html#calc_energy[`calc_energy()`].
+
+[bibliography]
+== References
+
+* [[[specialquad,1]]] *Anderson, D.* Gaussian Quadrature Formulae for stem:[\int_0^1 -\ln(x)f(x) dx]. Mathematics of Computation 19 (1965), 477-481
+
+//https://doi.org/10.1090/S0025-5718-1965-0178569-1
+
+* [[[GSS,2]]] *Grilli, S., Skourup, J., and Svendsen, I.* An efficient boundary element method for nonlinear water waves. Engineering Analysis with Boundary Elements, 1989, Vol. 6, No 2, 97-107
+
+* [[[OSG,3]]] *Otta, A., Svendsen, I., Grilli, S.* Unsteady Free Surface Waves in a Region of Arbitrary Shape
+Center for Applied Coastal Research, University of Delaware, Report No. CACR-92-10
