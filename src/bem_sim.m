@@ -170,7 +170,7 @@ classdef bem_sim
             obj.meta.history_store_angle_FS = history_store_angle_FS;
             obj.meta.integral_spline = integral_spline;
             obj.characteristics_ = struct('K_n',[],'K_d',[],'COEFS_n',[],'cosbeta',[],'sinbeta',[],'ctime','null','phi',[],'phi_n',[],'mat_A',[],'mat_b',[],'FS_spline_x',0,'FS_spline_z',0);
-            obj.regridding = struct('regrid_type','none','threshold_type','manual','did_regrid',0);
+            obj.regridding = struct('regrid_type','none','threshold_type','manual','did_regrid',0,'threshold_check_vals',[]);
         end
         
         function obj = update_characteristics(obj)
@@ -609,7 +609,7 @@ classdef bem_sim
             %   regrid_type:
             %     'none' - no regriding is done. force_regrid does not do
             %           anything.
-            %     'shift_by_curve3d' - uses curve_renode_3d() to evenly
+            %     'shift_by_curve3d_normu' - uses curve_renode_3d() to evenly
             %           distribute by curve length in (x,z,phi * a/Umax)
             %           coordinates, where a is specified by
             %           regrid_param{1}, and Umax is calculated as
@@ -618,6 +618,9 @@ classdef bem_sim
             %           regrid_param{2} specifies the interpolation scheme,
             %           which is passed as the interp_scheme argument into
             %           the curve_3d functions.
+            %     'shift_by_curve3d_maxphis' - same as
+            %           'shift_by_curve3d_normu', but instead of Umax,
+            %           max(|phi_s|) is used.
             %     'shift_by_curve2d_normu' -uses curve_renode_by_integral()
             %           using the integrand sqrt(1 + (|u|*a/umax)^2), which
             %           is similar to shift_by_curve3d, except
@@ -643,7 +646,8 @@ classdef bem_sim
             %           threshold_param{1} and threshold_param{2},
             %           respectively.
             valid_threshold_types = {'manual','factor_global','factor_local','factor_global_local'};
-            valid_regrid_types = {'none','shift_by_curve3d','shift_by_curve2d_normu'};
+            valid_regrid_types = {'none','shift_by_curve3d_normu','shift_by_curve3d_maxphis','shift_by_curve2d_normu'};
+            min_normalizer = 1e-6; % this value is to prevent divide-by-zero on normalization
             %check valid types
             if ~any(strcmp(valid_regrid_types,obj.regridding.regrid_type))
                 fprintf('regrid_type "%s" is invalid. Change it in the regridding struct!\n',obj.regridding.regrid_type);
@@ -661,24 +665,61 @@ classdef bem_sim
             if ~force
                 if strcmp(obj.regridding.regrid_type,'manual')
                 end
-                if strcmp(obj.regridding.regrid_type,'shift_by_curve3d')
-                    obj = obj.update_characteristics();
+                if strcmp(obj.regridding.regrid_type,'shift_by_curve3d_normu') || strcmp(obj.regridding.regrid_type,'shift_by_curve3d_maxphis')
+                    use_normu = strcmp(obj.regridding.regrid_type,'shift_by_curve3d_normu');
+                    if use_normu
+                        obj = obj.update_characteristics();
+                    end
                     FS_i = obj.boundary.FS_start;
                     FS_f = obj.boundary.FS_end;
                     a = obj.regridding.regrid_param{1};
-                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *a/obj.characteristics_.umax];
+                    if use_normu
+                        normalizer = obj.characteristics_.umax;
+                    else
+                        %first calculate max |phi_s|
+                        normalizer = 0;
+                        M = obj.interpolation_sliding.M;
+                        Lp = obj.interpolation_sliding.Lagrange_prime;
+                        mnode = linspace(0,1,M+1);
+                        x = obj.boundary.x; z = obj.boundary.z; phi_FS = obj.boundary.phi_FS;
+                        for j = FS_i:FS_f
+                            
+                            %find the sliding segment
+                            k = j - floor(M/2);
+                            if k < FS_i
+                                k = FS_i;
+                            elseif k+M > FS_f
+                                k = FS_f - M;
+                            end
+                            %linear combination for lagrange polys
+                            coefs = mnode(j - k + 1);
+                            coefs = coefs.^(0:(M-1)) * Lp';
+                            phis = abs(dot(coefs, phi_FS(k-FS_i+1:k+M-FS_i+1))) ...
+                                /norm(coefs * [x(k:k+M)' z(k:k+M)']);
+                            if phis > normalizer
+                                normalizer = phis;
+                            end
+                        end
+                    end
+                    %minimum value to prevent divide-by-zero
+                    normalizer = max(normalizer,min_normalizer);
+                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *a/normalizer];
                     seglens = curve_lengths_3d(V,obj.regridding.regrid_param{2});
                     seglens = (seglens / sum(seglens)) * (FS_f-FS_i); %divide by average length
                     if strcmp(obj.regridding.threshold_type,'factor_global')
                         factor = obj.regridding.threshold_param{1};
-                        if max(seglens) < factor && min(seglens) > 1/factor
+                        globalfactor = max(max(seglens), 1/min(seglens));
+                        obj.regridding.threshold_check_vals = globalfactor;
+                        if globalfactor < factor
                             %within expected range, so no regrid
                             return;
                         end
                     elseif strcmp(obj.regridding.threshold_type,'factor_local')
                         neighbor_ratios = seglens(1:end-1) ./ seglens(2:end);
                         factor = obj.regridding.threshold_param{1};
-                        if max(neighbor_ratios) < factor && min(neighbor_ratios) > 1/factor
+                        localfactor = max(max(neighbor_ratios),1/min(neighbor_ratios));
+                        obj.regridding.threshold_check_vals = localfactor;
+                        if localfactor < factor
                             %within expected range, so no regrid
                             return;
                         end
@@ -686,8 +727,11 @@ classdef bem_sim
                         neighbor_ratios = seglens(1:end-1) ./ seglens(2:end);
                         factor_global = obj.regridding.threshold_param{1};
                         factor_local = obj.regridding.threshold_param{2};
-                        if max(neighbor_ratios) < factor_local && min(neighbor_ratios) > 1/factor_local...
-                                && max(seglens) < factor_global && min(seglens) > 1/factor_global
+                        globalfactor = max(max(seglens), 1/min(seglens));
+                        localfactor = max(max(neighbor_ratios),1/min(neighbor_ratios));
+                        obj.regridding.threshold_check_vals = [globalfactor,localfactor];
+                        if localfactor < factor_local && localfactor > 1/factor_local...
+                                && globalfactor < factor_global && globalfactor > 1/factor_global
                             %within expected range, so no regrid
                             return;
                         end
@@ -698,19 +742,23 @@ classdef bem_sim
                     FS_f = obj.boundary.FS_end;
                     a = obj.regridding.regrid_param{1};
                     V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f); obj.boundary.phi_FS];
-                    vnorm2 = obj.characteristics_.vnorm2_FS;
+                    vnorm2 = max(obj.characteristics_.vnorm2_FS, min_normalizer);
                     seglens = curve_lengths_by_integral(V(1:2,:),sqrt(1 + vnorm2*(a/obj.characteristics_.umax)^2));
                     seglens = (seglens / sum(seglens)) * (FS_f-FS_i); %divide by average length
                     if strcmp(obj.regridding.threshold_type,'factor_global')
                         factor = obj.regridding.threshold_param{1};
-                        if max(seglens) < factor && min(seglens) > 1/factor
+                        globalfactor = max(max(seglens), 1/min(seglens));
+                        obj.regridding.threshold_check_vals = globalfactor;
+                        if globalfactor < factor
                             %within expected range, so no regrid
                             return;
                         end
                     elseif strcmp(obj.regridding.threshold_type,'factor_local')
                         neighbor_ratios = seglens(1:end-1) ./ seglens(2:end);
                         factor = obj.regridding.threshold_param{1};
-                        if max(neighbor_ratios) < factor && min(neighbor_ratios) > 1/factor
+                        localfactor = max(max(neighbor_ratios),1/min(neighbor_ratios));
+                        obj.regridding.threshold_check_vals = localfactor;
+                        if localfactor < factor
                             %within expected range, so no regrid
                             return;
                         end
@@ -718,9 +766,11 @@ classdef bem_sim
                         neighbor_ratios = seglens(1:end-1) ./ seglens(2:end);
                         factor_global = obj.regridding.threshold_param{1};
                         factor_local = obj.regridding.threshold_param{2};
-                        fprintf('local [%g,%g]; global [%g,%g]',min(neighbor_ratios),max(neighbor_ratios),min(seglens),max(seglens));
-                        if max(neighbor_ratios) < factor_local && min(neighbor_ratios) > 1/factor_local...
-                                && max(seglens) < factor_global && min(seglens) > 1/factor_global
+                        globalfactor = max(max(seglens), 1/min(seglens));
+                        localfactor = max(max(neighbor_ratios),1/min(neighbor_ratios));
+                        obj.regridding.threshold_check_vals = [globalfactor,localfactor];
+                        if localfactor < factor_local && localfactor > 1/factor_local...
+                                && globalfactor < factor_global && globalfactor > 1/factor_global
                             %within expected range, so no regrid
                             return;
                         end
@@ -729,22 +779,55 @@ classdef bem_sim
             end
 
             %do the regrid
-            if strcmp(obj.regridding.regrid_type,'shift_by_curve3d')
+            if strcmp(obj.regridding.regrid_type,'shift_by_curve3d_normu') || strcmp(obj.regridding.regrid_type,'shift_by_curve3d_maxphis')
                 if force || ~(...
                         strcmp(obj.regridding.threshold_type,'factor_local') ||...
                         strcmp(obj.regridding.threshold_type,'factor_global') ||...
                         strcmp(obj.regridding.threshold_type,'factor_global_local'))
                     %have not calculated these already, so do that
-                    obj = obj.update_characteristics();
+                    use_normu = strcmp(obj.regridding.regrid_type,'shift_by_curve3d_normu');
+                    if use_normu
+                        obj = obj.update_characteristics();
+                    end
                     FS_i = obj.boundary.FS_start;
                     FS_f = obj.boundary.FS_end;
                     a = obj.regridding.regrid_param{1};
-                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *(a/obj.characteristics_.umax)];
+                    if use_normu
+                        normalizer = obj.characteristics_.umax;
+                    else
+                        %first calculate max |phi_s|
+                        normalizer = 0;
+                        M = obj.interpolation_sliding.M;
+                        Lp = obj.interpolation_sliding.Lagrange_prime;
+                        mnode = linspace(0,1,M+1);
+                        x = obj.boundary.x; z = obj.boundary.z; phi_FS = obj.boundary.phi_FS;
+                        for j = FS_i:FS_f
+                            
+                            %find the sliding segment
+                            k = j - floor(M/2);
+                            if k < FS_i
+                                k = FS_i;
+                            elseif k+M > FS_f
+                                k = FS_f - M;
+                            end
+                            %linear combination for lagrange polys
+                            coefs = mnode(j - k + 1);
+                            coefs = coefs.^(0:(M-1)) * Lp';
+                            phis = abs(dot(coefs, phi_FS(k-FS_i+1:k+M-FS_i+1))) ...
+                                /norm(coefs * [x(k:k+M)' z(k:k+M)']);
+                            if phis > normalizer
+                                normalizer = phis;
+                            end
+                        end
+                    end
+                    %minimum value to prevent divide-by-zero
+                    normalizer = max(normalizer,min_normalizer);
+                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *a/normalizer];
                 end
                 Vnew = curve_renode_3d(V,FS_f-FS_i+1,obj.regridding.regrid_param{2});
                 obj.boundary.x(FS_i:FS_f) = Vnew(1,:);
                 obj.boundary.z(FS_i:FS_f) = Vnew(2,:);
-                obj.boundary.phi_FS = Vnew(3,:) * (obj.characteristics_.umax/a);
+                obj.boundary.phi_FS = Vnew(3,:) * (normalizer/a);
             elseif strcmp(obj.regridding.regrid_type,'shift_by_curve2d_normu')
                 if force || ~(...
                         strcmp(obj.regridding.threshold_type,'factor_local') ||...
@@ -756,7 +839,7 @@ classdef bem_sim
                     FS_f = obj.boundary.FS_end;
                     a = obj.regridding.regrid_param{1};
                     V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f); obj.boundary.phi_FS];
-                    vnorm2 = obj.characteristics_.vnorm2_FS;
+                    vnorm2 = max(obj.characteristics_.vnorm2_FS, min_normalizer);
                 end
                 Vnew = curve_renode_by_integral(V,sqrt(1 + vnorm2*(a/obj.characteristics_.umax)^2),FS_f-FS_i+1,[1;1;0]);
                 obj.boundary.x(FS_i:FS_f) = Vnew(1,:);

@@ -26,6 +26,19 @@ else
     end
 end
 
+%netcdf saving parameters
+if do_nc_export
+    if (~exist('manager','var')) && ~exist('nc_buffer_size','var')
+        fprintf('no buffer size for sim_netcdf_manager specified. Defaulting to 10\n');
+        nc_buffer_size = 10;
+    end
+
+    if ~exist('should_append_nc','var')
+        fprintf('should_append_nc function not specified. Will save every frame.\n');
+        should_append_nc = @(t_last,t_now,steps) 1;
+    end
+end
+
 if do_nc_export && ~exist('ncfile','var')
     error('NC exporting without "ncfile" specified! Please set the variable to a valid file!')
 end
@@ -50,6 +63,7 @@ if do_nc_export && ~exist('manager','var')
     fprintf('no sim_netcdf_manager object as "manager". Creating a new one')
     fprintf(' without overwrite.\n')
     manager = sim_netcdf_manager(ncfile,0);
+    manager.buffer_size = nc_buffer_size;
     manager.save_time(s);
 end
 
@@ -77,7 +91,8 @@ if ~strcmp(logfile,'null')
     fclose(fid);
 end
 
-
+last_save = 0; %number of steps since last save
+last_savet = 0; %time of last save
 while s.stepping.t < t_target
     %=========[check blow-up criterion]===========
     max_pos2 = max(s.boundary.x.^2 + s.boundary.z.^2);
@@ -112,8 +127,11 @@ while s.stepping.t < t_target
     s = s.handle_regrid(0);
     s = on_loop_callback(s);
     s = s.update_characteristics();
-    if do_nc_export
+    last_save = last_save + 1;
+    if do_nc_export && should_append_nc(last_savet,s.stepping.t,last_save)
         manager.save_time(s);
+        last_savet = s.stepping.t;
+        last_save = 0;
     end
     if do_fig
         s.plot_FS();

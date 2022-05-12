@@ -11,8 +11,8 @@ dims = size(V,1);
 v_spline = zeros(dims,v_pts-1,4);
 for i = 1:dims
     v_spline(i,:,:) = csape(1:v_pts,V(i,:)).coefs;
-    integ_spline = csape(1:v_pts,integrand_nodes).coefs;
 end
+integ_spline = csape(1:v_pts,integrand_nodes).coefs;
 
 
 %integrate segment "lengths" (by a + curvature "norm")

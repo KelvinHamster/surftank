@@ -1,6 +1,6 @@
-function sim = surfranch_IC(Nx,x0,a0,theta,varargin)
-%SURFRANCH_IC Sets up a bem_sim object with an initial condition from the Surf Ranch.
-%   Initializes Surf Ranch bathymetry and a soliton. The left-most wall is
+function sim = surftank_IC(Nx,x0,a0,theta,varargin)
+%SURFTANK_IC Sets up a bem_sim object with an initial condition for an overturn.
+%   Initializes bathymetry and a soliton. The left-most wall is
 %   positioned at x = 0. The returned object may need manual adjustment of:
 %       meta.sim_parallel_workers (default = 0)
 %       stepping (default: dt=0.01, store_dt=0.25, timestep_method='abm4')

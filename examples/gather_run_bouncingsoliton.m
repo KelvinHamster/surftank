@@ -19,6 +19,8 @@ function [max_time,sim] = gather_run_bouncingsoliton(Nx, dt, a0, T, varargin)
 %               rebalance_walls is forced true.) (default 'default')
 %   L - horizontal length of the simulation
 %   sim_args - cell array for bem_sim constructor
+%   should_append_nc - function taking (last_append_time,current_time,steps_between)
+%               and returning whether or not the step of a simulation should be saved.
 %
 % simulation data is saved into the runs directory in the format:
 %   time, energy error, volume error, flux integral, mean water level, condition number\n
@@ -34,6 +36,7 @@ plot_full = 0;
 wall_resolution_factor = 1;
 L = 40;
 sim_args = {};
+should_append_nc = @(t_last,t_now,steps) 1;
 
 p = inputParser;
 addOptional(p,'do_gui',do_gui,@(x) islogical(x) || (x==0) || (x==1));
@@ -47,6 +50,7 @@ addOptional(p,'br_x',br_x, @(x) (isnumeric(x) && isscalar(x))|| strcmp(x,'defaul
 addOptional(p,'br_z',br_z, @(x) (isnumeric(x) && isscalar(x))|| strcmp(x,'default'));
 addOptional(p,'L',L, @(x) isnumeric(x) && isscalar(x) && (x >= 0) );
 addOptional(p,'sim_args',sim_args,@(x) iscell(x))
+addOptional(p,'should_append_nc',should_append_nc,@(x) isa(x,'function_handle'))
 parse(p, varargin{:});
 
 do_gui = p.Results.do_gui;
@@ -60,6 +64,7 @@ plot_full = p.Results.plot_full;
 wall_resolution_factor = p.Results.wall_resolution_factor;
 L = p.Results.L;
 sim_args = p.Results.sim_args;
+should_append_nc = p.Results.should_append_nc;
 
 % note here 'L' is called twice
 s = bem_sim('type','soliton_reflect','L',40,'parallel_workers',workers,'Nx',Nx,'dt',dt,'a0',a0,'wall_resolution_factor',wall_resolution_factor,'L',L,sim_args{:});

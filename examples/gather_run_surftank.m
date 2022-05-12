@@ -1,10 +1,10 @@
-function gather_run_surfranch(Nx_FS,courant_target, tmax,ncfile,do_log,varargin)
-%does a run using the surfranch_IC initial condition.
-%   Runs the surfranch IC with x0 = 20, a0 = 1.5, theta = 64.5 degrees
+function gather_run_surftank(Nx_FS,courant_target, tmax,ncfile,do_log,varargin)
+%does a run using the surftank_IC initial condition.
+%   Runs the surftank IC with x0 = 20, a0 = 1.5, theta = 64.5 degrees
 %   with a courant lock on courant_target, up to tmax.
 %   logging is done in ncfile, and if do_log is true, the print
 %   statements are appended to a file of the format
-%       surfranchsimlog__YYYY_MM_DD.txt
+%       surftanksimlog__YYYY_MM_DD.txt
 %   unless the keyword argument log_filename is given.
 %
 % do_log defaults to true
@@ -23,7 +23,10 @@ function gather_run_surfranch(Nx_FS,courant_target, tmax,ncfile,do_log,varargin)
 %       outputs a bem_sim object with parameters that the user wants set.
 %       The handle is used to modify the simulation right before it is run.
 %       (default = @(x) x, the identity map)
-%   log_filename - name of the logfile if true ()
+%   log_filename - name of the logfile if do_log is true (0 for default name).
+%   loop_callback - callback function relating to run_sim on_loop_callback
+%   append_nc_callback - function relating to run_sim should_append_nc
+%
 
 interp = 1;
 interp_FS = 1;
@@ -33,6 +36,8 @@ load_from_nc = 'no';
 load_from_nc_t = 0;
 sim_setup_handle = @(x) x;
 log_filename = 0;
+append_nc_callback = @(t_last,t_now,steps) 1;
+loop_callback = @(s) s;
 
 p = inputParser;
 addOptional(p,'integral_spline',integral_spline,@(x) islogical(x) || (x==0) || (x==1))
@@ -43,6 +48,8 @@ addOptional(p,'interp_FS',interp_FS, @(x) isnumeric(x) && isscalar(x) && (x >= 0
 addOptional(p,'interp_sliding',interp_sliding, @(x) isnumeric(x) && isscalar(x) && (x >= 0) && (mod(x,1) == 0) );
 addOptional(p,'sim_setup_handle',sim_setup_handle, @(x) isa(x,'function_handle') );
 addOptional(p,'log_filename',log_filename, @(x) x==0 || (ischar(x) || isstr(x)) );
+addOptional(p,'append_nc_callback',append_nc_callback,@(x) isa(x,'function_handle'))
+addOptional(p,'loop_callback',loop_callback,@(x) isa(x,'function_handle'))
 parse(p, varargin{:});
 
 interp = p.Results.interp;
@@ -53,6 +60,8 @@ load_from_nc = p.Results.load_from_nc;
 load_from_nc_t = p.Results.load_from_nc_t;
 sim_setup_handle = p.Results.sim_setup_handle;
 log_filename = p.Results.log_filename;
+should_append_nc = p.Results.append_nc_callback;
+on_loop_callback = p.Results.loop_callback;
 
 
 if ~exist('do_log','var')
@@ -60,7 +69,7 @@ if ~exist('do_log','var')
 end
 
 if strcmp(load_from_nc,'no')
-    s = surfranch_IC(Nx_FS,20,1.5,64.5*pi/180);
+    s = surftank_IC(Nx_FS,20,1.5,64.5*pi/180);
 else
     man_temp = sim_netcdf_manager(load_from_nc,0);
     s = man_temp.get_sim(load_from_nc_t);
@@ -82,7 +91,7 @@ s.stepping.timestep_method = 'taylor2';
 s = sim_setup_handle(s);
 if do_log
     if log_filename == 0
-        logfile = sprintf('surfranchsimlog__%s.txt',datestr(now,'yyyy_mm_dd'));
+        logfile = sprintf('surftanksimlog__%s.txt',datestr(now,'yyyy_mm_dd'));
     else
         logfile = log_filename;             
     end

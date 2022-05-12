@@ -22,6 +22,8 @@ function [max_time,sim] = gather_run_standingwave(Nx, dt, a0, T, varargin)
 %               rebalance_walls is forced true.) (default 'default')
 %   plot_full - if true, the entire boundary is plotted (sim.plot_full()) (default 0)
 %   sim_args - cell array for bem_sim constructor
+%   should_append_nc - function taking (last_append_time,current_time,steps_between)
+%               and returning whether or not the step of a simulation should be saved.
 %   
 %
 % simulation data is saved into the runs directory in the format:
@@ -40,6 +42,7 @@ workers = 4;
 plot_full = 0;
 wall_resolution_factor = 1;
 sim_args = {};
+should_append_nc = @(t_last,t_now,steps) 1;
 
 p = inputParser;
 addOptional(p,'do_gui',do_gui,@(x) islogical(x) || (x==0) || (x==1))
@@ -52,6 +55,7 @@ addOptional(p,'workers',workers, @(x) isnumeric(x) && isscalar(x) && (x >= 0) &&
 addOptional(p,'plot_full',plot_full,@(x) islogical(x) || (x==0) || (x==1))
 addOptional(p,'wall_resolution_factor',wall_resolution_factor, @(x) isnumeric(x) && isscalar(x) && (x > 0) );
 addOptional(p,'sim_args',sim_args,@(x) iscell(x))
+addOptional(p,'should_append_nc',should_append_nc,@(x) isa(x,'function_handle'))
 parse(p, varargin{:});
 
 do_gui = p.Results.do_gui;
@@ -64,6 +68,7 @@ workers = p.Results.workers;
 plot_full = p.Results.plot_full;
 wall_resolution_factor = p.Results.wall_resolution_factor;
 sim_args = p.Results.sim_args;
+should_append_nc = p.Results.should_append_nc;
 
 
 s = bem_sim('type','standing_wave','parallel_workers',workers,'Nx',Nx,'dt',dt,'a0',a0,'wall_resolution_factor',wall_resolution_factor,sim_args{:});
