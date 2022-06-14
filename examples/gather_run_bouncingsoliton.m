@@ -99,11 +99,7 @@ if force_rebalance
     s.boundary.z(r(1)+1:r(2)) = linspace(br_z,z(r(2)),r(2)-r(1));
 end
 
-if exist('data_filename','var')
-    fname = data_filename;
-else
-    fname = sprintf('../runs/Nx%d_dt%f_a0%f_bouncingsoliton_run.txt',Nx,dt,a0);
-end
+fname = data_filename;
 
 t_target = T;
 do_nc_export = ~strcmp(data_filename,'null');

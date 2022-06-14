@@ -1,0 +1,76 @@
+= Regridding Schemes
+Kentaro Hanson
+:stem:
+
+The free surface is specified by the locations of the boundary nodes, which move over time. Fluid motion can push nodes away from each other, decreasing resolution in some areas, or push nodes closer together, creating regions where the boundary integral equation has a near-singular integrand. In either case, numerical errors can grow and cause the simulation to be unstable. To remedy this, nodes can be added, removed, or distributed along the surface in between time steps.
+The methods in this model extend from what was suggested in Grilli and Subramanya (1996)^<<GS>>^.
+
+== Formulation
+
+The surface can be interpolated between the nodes using two splines: one in `x` and one in `z`.
+
+[stem]
+====
+\[\big(S_x(k),S_z(k)\big) = \vec x_k, ~ ~ ~ k = 0,\dots,N\]
+====
+
+where the surface is divided into `N` segments by `N+1` nodes, and stem:[x_k] is the location of node stem:[k].
+The length can be calculated using some quadrature on the integral:
+
+[stem]
+====
+\[L_{a}^b = \int_a^b \sqrt{S_x'(t)^2 + S_z'(t)^2} ~ dt\]
+====
+If the length is calculated on each segment, we can check if a node is too close or far away from its neighbors by comparing the lengths on each segment stem:[L_{k-1}^k]. In practice, however, we might want higher node concentration on areas where there is more motion in order to model the fluid at a higher resolution.
+One way of doing this is by treating the surface as a curve in three dimensions (`x`,`z`,`phi`) since `phi` is known at each node. This means
+
+[stem]
+====
+\[L_{a}^b = \int_a^b \sqrt{S_x'(t)^2 + S_z'(t)^2 + \left(\alpha S_\phi'(t)\right)^2} ~ dt\]
+====
+
+is used instead of Euclidean distance in two dimensions, where stem:[\alpha] is a scaling parameter with units equivalent to one over velocity. This scheme is used in `shift_by_curve3d`. One issue that arises through this model, however, is that it does not capture velocity orthogonal to the surface. We can observe this by noticing
+
+[stem]
+====
+\[ds = \sqrt{S_x'(t)^2 + S_z'(t)^2} ~ dt\]
+\[L_{a}^b = \int_a^b \sqrt{\frac{ds}{dt} + \left(\alpha\frac{d\phi}{ds}\frac{ds}{dt}\right)^2} ~ dt = \int_a^b \sqrt{1 + \left(\alpha\phi_s\right)^2} ~ ds\]
+====
+
+To deal with this, we can replace stem:[\phi_s] with stem:[|v|= |\nabla \phi| = \sqrt{\phi_s^2 + \phi_n^2}], which is the fluid velocity along the surface. Here, we denote stem:[\phi_s] as the directional derivative along the surface and stem:[\phi_n] as the directional derivative orthogonal to the surface. The integrand can be interpolated by a spline in addition to the surface, so that we only need stem:[|v|] at each node (which is calculated in the Boundary Element Method). This is the scheme used in `shift_by_curve2d_normu`, where a parameter `a` is taken, and
+
+[stem]
+====
+\[\alpha = \frac{a}{u_{max}}, ~ ~ ~ u_{max} =  max_{0\le k\le N} |v| = max_{0\le k\le N} \sqrt{(\phi_s)_k^2 + (\phi_n)_k^2}\]
+
+\[L_{a}^b = \int_a^b \sqrt{1 + \left(\alpha|v|\right)^2} ~ ds\]
+====
+
+is used (stem:[u_{max}] is taken on the free surface).
+
+
+GS^<<GS>>^ proposes that regridding should be done if these lengths differ by more than 50%. In this model, a local factor stem:[R_l] is used. When a local factor threshold type is used (`factor_local` or `factor_global_local`), regridding is done when one of the following is true for some `k`:
+
+[stem]
+====
+\[\frac{L_{k}^{k+1}}
+{L_{k-1}^{k}} > R_l, ~ ~ ~ ~ 
+\frac{L_{k-1}^{k}}
+{L_{k}^{k+1}} > R_l\]
+====
+
+This can be compared to GS when stem:[R_l = 2] is used, which was found to work well in the overturn case. In addition to a local threshold, a global threshold stem:[R_g] is available with types `factor_global` and `factor_global_local`. Regridding is done if
+
+[stem]
+====
+\[\frac{L_{k-1}^{k}}
+{L_{0}^N} > R_g, 
+~ ~ ~ ~ \frac{L_{0}^N}
+{L_{k-1}^{k}} > R_g\]
+====
+for some `k`.
+
+[bibliography]
+== References
+
+* [[[GS,1]]] *Grilli, S., Subramanya R.* Numerical modeling of wave breaking induced by fixed or moving boundaries. Computational Mechanics 17, 1996, 374-391

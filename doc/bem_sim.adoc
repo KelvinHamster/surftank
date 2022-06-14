@@ -76,7 +76,7 @@ For nodes on the free surface,
 
 On elements outside of the free surface, isoparametric elements of size `M` are used, stored in <<interpolation_M,`interpolation.M`>>. Because of this, `FS_start`, `FS_end`, and `N` must take values that allow non-free-surface elements to be represented by consecutive, non-overlapping nodes. Specifically, regions between double nodes must consist of `kM + 1` nodes for some positive integer `k`.
 
-image:element_seq.png[]
+image:res/element_seq.png[]
 
 [#boundary_N]
 ===== N - [small]#integer#
@@ -532,7 +532,7 @@ For regridding, <<method_handle_regrid,handle_regrid()>> should be used instead.
 
 Adds new free surface nodes at the specified parameterization indices, interpolating as necessary.
 
-A node is placed at each value of `xi`. For each `xi(i)` written as stem:[\xi_i], set stem:[k+s = \xi_i] so that stem:[k] is an integer and stem:[0 <= s < 1]. The
+A node is placed at each value of `xi`. For each `xi(i)` written as stem:[\xi_i], set stem:[k+s = \xi_i] so that stem:[k] is an integer and stem:[0 \le s < 1]. The
 node is added in segment stem:[k] of the free surface (between nodes stem:[\text{FS_start}+k] and stem:[\text{FS_start}+k+1]) and offset by stem:[s], which uniformly distributes the node onto the segment by arc
 length (stem:[s = 0] corresponds to node stem:[\text{FS_start}+k] and stem:[s = 0.5] corresponds to the midpoint of segment stem:[k]). The arc length is calculated using standard Gauss-Legendre Quadrature.
 

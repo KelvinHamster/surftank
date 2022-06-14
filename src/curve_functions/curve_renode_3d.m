@@ -1,4 +1,4 @@
-function V1 = curve_renode_3d(V,numnodes,interp_scheme,length_weights)
+function V1 = curve_renode_3d(V,numnodes,interp_scheme,dim_scales,length_weights)
 %Creates a 3xnumnodes matrix representing a curve reweighed so that the nodes are evenly spaced
 % 
 %   V - 3xN matrices, where each column represents a point in 3d space
@@ -8,6 +8,9 @@ function V1 = curve_renode_3d(V,numnodes,interp_scheme,length_weights)
 %       'sliding3' - 3rd order (4 node) lagrange interpolation
 %       'sliding5' - 5rd order (6 node) lagrange interpolation
 %       'spline' - does spline interpolation
+%   dim_scales - how much to scale along each dimension. This is used to
+%               calculate ds = sqrt(dot(dim_scales.^2,dr.^2)). defaults to
+%               all ones.
 %
 %   length_weights - weights for the distances between the desired node
 %   locations. This should be an array of length numnodes-1. The distance
@@ -16,7 +19,9 @@ function V1 = curve_renode_3d(V,numnodes,interp_scheme,length_weights)
 %   optional, with a default of all ones.
 v_pts = size(V,2);
 dims = size(V,1);
-
+if ~exist('dim_scales','var')
+    dim_scales = ones(dims,1);
+end
 if ~exist('length_weights','var')
     length_weights = ones(1,numnodes-1)';
 end
@@ -58,18 +63,17 @@ v_seglens = zeros(v_pts - 1, 1);
 
 for k = 1:(v_pts-1)
     if mode == 1 && mode_M == 1 %trivial case: linear
-        v_seglens(k) = sqrt(sum((V(:,k+1) - V(:,k)).^2));
+        v_seglens(k) = sqrt(sum((dim_scales.*(V(:,k+1) - V(:,k))).^2));
     elseif mode == 0 %spline; a bit more difficult; derivative of poly
         derivs = squeeze(v_spline(:,k,1:3)) * ((LEN_QUAD_T.^(2:-1:0))' .* (3:-1:1)');
-        v_seglens(k) = dot(LEN_QUAD_W, vecnorm(derivs,2,1));
+        v_seglens(k) = dot(LEN_QUAD_W, vecnorm(derivs.*dim_scales,2,1));
     elseif mode==1 %general sliding segments
         sld_pos = max(1, min(v_pts - sld_seg.M, k - floor(sld_seg.M/2)));
         sld_off = k - sld_pos;
         derivs = ((sld_off + LEN_QUAD_T).^(0:sld_seg.M-1) * sld_seg.Lagrange_prime') * V(:,sld_pos:(sld_pos + sld_seg.M))';
-        v_seglens(k) = dot(LEN_QUAD_W, vecnorm(derivs,2,2));
+        v_seglens(k) = dot(LEN_QUAD_W, vecnorm(derivs.*dim_scales',2,2));
     end
 end
-
 v_cumlen = [0; cumsum(v_seglens)];
 
 %find desired_lengths for new curve nodes
@@ -85,7 +89,7 @@ for j = 1:numnodes
     
     %target positions must lie on these segment indices
     k = find(v_cumlen <= l,1,"last");
-    if k == numnodes
+    if k >= v_pts
         k = k - 1;
     end
     
@@ -97,7 +101,7 @@ for j = 1:numnodes
         a = 0; b = 1; c = 0.5;
         while b - a > len_tol
             derivs = ((sld_off + c*LEN_QUAD_T).^(0:sld_seg.M-1) * sld_seg.Lagrange_prime') * V(:,sld_pos:(sld_pos + sld_seg.M))';
-            fc = c * dot(LEN_QUAD_W, vecnorm(derivs,2,2));
+            fc = c * dot(LEN_QUAD_W, vecnorm(derivs.*dim_scales',2,2));
             if l < fc
                 b = c; %we are overshooting
             else
@@ -113,7 +117,7 @@ for j = 1:numnodes
         a = 0; b = 1; c = 0.5;
         while b - a > len_tol
             derivs = squeeze(v_spline(:,k,1:3)) * (((LEN_QUAD_T*c).^(2:-1:0))' .* (3:-1:1)');
-            fc = c * dot(LEN_QUAD_W, vecnorm(derivs,2,1));
+            fc = c * dot(LEN_QUAD_W, vecnorm(derivs.*dim_scales,2,1));
             if l < fc
                 b = c; %we are overshooting
             else

@@ -2,10 +2,33 @@
 Kentaro Hanson
 :stem:
 
-This is a Matlab implementation of the Boundary Element Method (BEM) for modeling irrotational fluid flows on a two dimensional simple domain in the context of surface gravity waves. The boundary is restricted to a union of an unmoving Neumann boundary (walls and floor of a tank or basin) and a contiguous free surface (water surface), in the formulation of Grilli et. al.
+This is a Matlab implementation of the Boundary Element Method (BEM) for modeling irrotational fluid flows on a two dimensional simple domain in the context of surface gravity waves. The boundary is restricted to a union of an unmoving solid boundary (walls and floor of a tank or basin) and a contiguous free surface (water surface), in the formulation of Grilli et. al.
 
 This model was created for the purpose of modeling shoaling waves, however it is general enough to handle different simulations, such as a standing wave in a tank.
 
 == Running the model
 
 There are 3 simulations already set up in the `examples` directory.
+
+* link:examples.html#standingwave[*`gather_run_standingwave`*] starts with a cosine wave, which, in the small amplitude approximation, is a standing wave that is one period wide in a rectangular tank.
+
+* link:examples.html#bouncingsoliton[*`gather_run_bouncingsoliton`*] takes a solitary wave (which is preserved on bounces in small enough amplitude) and places it into a rectangular tank.
+
+* link:examples.html#surftank[*`gather_run_surftank`*] places a solitary wave into a tank designed to create an overturn.
+
+== Basic Algorithm
+
+The surface is advected in the Lagrangian specification of fluid flow:
+
+[stem]
+====
+\[
+\frac{D \vec r}{D t} = \nabla\phi
+\]
+
+\[
+\frac{D \phi}{D t} = \frac{1}{2}|\nabla \phi|^2 - gz - \frac{P_a}{\rho}
+\]
+====
+
+where stem:[\phi] is the velocity potential (fluid velocity is equal to stem:[\nabla\phi]), stem:[g] is the acceleration due to gravity, stem:[P_a] is the pressure on the surface, and stem:[\rho] is the density of the fluid. Assuming we know the value of stem:[\phi] on the surface, we can approximate the derivative parallel to the surface. This means that if we can find the derivative perpendicular to the surface, we know what stem:[\nabla\phi] is. We can do this using the link:bem_method.html[boundary element method]. The free surface is specified with a Dirichlet boundary condition (stem:[\phi = f(x)]), and the solid boundary is specified with a homogeneous Neumann boundary condition (stem:[(\partial \phi)/(\partial n) = 0]).

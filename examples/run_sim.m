@@ -3,9 +3,15 @@ if ~exist('do_fig','var')
     do_fig = 0;
 end
 
-if ~exist('do_save','var')
-    fprintf('No specified do_save. defaulting to 0 (no saving plots)\n');
-    do_save = 0;
+if do_fig
+    if ~exist('do_save','var')
+        fprintf('No specified do_save. defaulting to 0 (no saving plots)\n');
+        do_save = 0;
+    end
+    if ~exist('plot_full','var')
+        fprintf('No specified plot_full. defaulting to 0 (plot the free surface only)\n');
+        plot_full = 0;
+    end
 end
 
 if ~exist('do_nc_export','var')
@@ -134,7 +140,11 @@ while s.stepping.t < t_target
         last_save = 0;
     end
     if do_fig
-        s.plot_FS();
+        if plot_full
+            s.plot_full();
+        else
+            s.plot_FS();
+        end
         if do_save
             saveas(1,sprintf('../figure/fig%d.png',fignum)); fignum = fignum + 1;
         end

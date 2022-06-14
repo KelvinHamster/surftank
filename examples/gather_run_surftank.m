@@ -38,6 +38,8 @@ sim_setup_handle = @(x) x;
 log_filename = 0;
 append_nc_callback = @(t_last,t_now,steps) 1;
 loop_callback = @(s) s;
+do_fig = 0;
+do_save = 0;
 
 p = inputParser;
 addOptional(p,'integral_spline',integral_spline,@(x) islogical(x) || (x==0) || (x==1))
@@ -50,6 +52,8 @@ addOptional(p,'sim_setup_handle',sim_setup_handle, @(x) isa(x,'function_handle')
 addOptional(p,'log_filename',log_filename, @(x) x==0 || (ischar(x) || isstr(x)) );
 addOptional(p,'append_nc_callback',append_nc_callback,@(x) isa(x,'function_handle'))
 addOptional(p,'loop_callback',loop_callback,@(x) isa(x,'function_handle'))
+addOptional(p,'do_plot_figs',do_fig,@(x) islogical(x) || (x==0) || (x==1))
+addOptional(p,'do_save_figs',do_save,@(x) islogical(x) || (x==0) || (x==1))
 parse(p, varargin{:});
 
 interp = p.Results.interp;
@@ -62,6 +66,8 @@ sim_setup_handle = p.Results.sim_setup_handle;
 log_filename = p.Results.log_filename;
 should_append_nc = p.Results.append_nc_callback;
 on_loop_callback = p.Results.loop_callback;
+do_fig = p.Results.do_plot_figs;
+do_save = p.Results.do_save_figs;
 
 
 if ~exist('do_log','var')
@@ -83,7 +89,7 @@ s.interpolation_sliding = get_interpolation_struct(interp_sliding,0,1);
 
 t_target = tmax;
 s.meta.sim_parallel_workers = 4;
-do_nc_export = 1;
+do_nc_export = exist("ncfile","var") && (~strcmp(ncfile,"null"));
 s.stepping.courant_lock = 1;
 s.stepping.courant_number = courant_target;
 s.stepping.timestep_method = 'taylor2';

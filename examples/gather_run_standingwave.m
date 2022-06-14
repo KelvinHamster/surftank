@@ -73,6 +73,7 @@ should_append_nc = p.Results.should_append_nc;
 
 s = bem_sim('type','standing_wave','parallel_workers',workers,'Nx',Nx,'dt',dt,'a0',a0,'wall_resolution_factor',wall_resolution_factor,sim_args{:});
 s.stepping.courant_lock = 0; %courant lock breaks since umax = 0 at t = 0
+
 period = 2*pi/s.meta.omega;
 
 force_rebalance = 0;

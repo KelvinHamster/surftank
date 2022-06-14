@@ -53,7 +53,7 @@ for j = 2:(numnodes-1)
     
     %target positions must lie on these segment indices
     k = find(v_cumlen <= l,1,"last");
-    if k == numnodes
+    if k >= v_pts
         k = k - 1;
     end
 

@@ -703,8 +703,8 @@ classdef bem_sim
                     end
                     %minimum value to prevent divide-by-zero
                     normalizer = max(normalizer,min_normalizer);
-                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *a/normalizer];
-                    seglens = curve_lengths_3d(V,obj.regridding.regrid_param{2});
+                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS];
+                    seglens = curve_lengths_3d(V.*[1;1;a/normalizer],obj.regridding.regrid_param{2});
                     seglens = (seglens / sum(seglens)) * (FS_f-FS_i); %divide by average length
                     if strcmp(obj.regridding.threshold_type,'factor_global')
                         factor = obj.regridding.threshold_param{1};
@@ -822,12 +822,12 @@ classdef bem_sim
                     end
                     %minimum value to prevent divide-by-zero
                     normalizer = max(normalizer,min_normalizer);
-                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS *a/normalizer];
+                    V = [obj.boundary.x(FS_i:FS_f); obj.boundary.z(FS_i:FS_f);obj.boundary.phi_FS];
                 end
-                Vnew = curve_renode_3d(V,FS_f-FS_i+1,obj.regridding.regrid_param{2});
+                Vnew = curve_renode_3d(V,FS_f-FS_i+1,obj.regridding.regrid_param{2},[1;1;a/normalizer]);
                 obj.boundary.x(FS_i:FS_f) = Vnew(1,:);
                 obj.boundary.z(FS_i:FS_f) = Vnew(2,:);
-                obj.boundary.phi_FS = Vnew(3,:) * (normalizer/a);
+                obj.boundary.phi_FS = Vnew(3,:);
             elseif strcmp(obj.regridding.regrid_type,'shift_by_curve2d_normu')
                 if force || ~(...
                         strcmp(obj.regridding.threshold_type,'factor_local') ||...
